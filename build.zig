@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const Builder = struct {
     b: *std.Build,
@@ -46,6 +47,13 @@ const Builder = struct {
     ) void {
         step.root_module.addImport("kwatcher", self.kwatcher);
         step.linkLibC();
+        step.linkSystemLibrary("rabbitmq.4");
+        switch (builtin.target.os.tag) {
+            .windows => {
+                step.linkSystemLibrary("user32");
+            },
+            else => @compileError("Unsupported Platform/OS"),
+        }
         step.addLibraryPath(.{ .cwd_relative = "." });
         step.addLibraryPath(.{ .cwd_relative = "." });
     }
@@ -95,6 +103,7 @@ pub fn build(b: *std.Build) !void {
     const exe = builder.addExecutable("kwatcher-afk", "src/main.zig");
     builder.addDependencies(exe);
     try builder.installAndCheck(exe);
+    exe.root_module.addImport("kwatcher-afk", builder.kwatcher_afk_lib);
 
     const run_cmd = b.addRunArtifact(exe);
 
