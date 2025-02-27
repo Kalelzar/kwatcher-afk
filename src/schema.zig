@@ -9,6 +9,7 @@ pub const AfkStatus = enum {
 pub const StatusDiff = struct {
     prev: AfkStatus,
     current: AfkStatus,
+    timestamp: i64,
     pub fn hasChanged(self: *const StatusDiff) bool {
         return self.prev != self.current;
     }

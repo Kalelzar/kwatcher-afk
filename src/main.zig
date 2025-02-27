@@ -4,7 +4,7 @@ const afk = @import("kwatcher-afk");
 
 const routes = @import("route.zig");
 
-const Dependencies = struct {
+const SingletonDependencies = struct {
     previous_status: ?afk.schema.AfkStatus = null,
 
     pub fn status(config: afk.config.Config) !afk.schema.AfkStatus {
@@ -12,17 +12,30 @@ const Dependencies = struct {
         const s = if (time < config.afk.afk_timeout) afk.schema.AfkStatus.Active else afk.schema.AfkStatus.Inactive;
         return s;
     }
+};
 
-    pub fn statusDiff(
-        self: *Dependencies,
-        current_status: afk.schema.AfkStatus,
-    ) afk.schema.StatusDiff {
-        const previous_status = if (self.previous_status) |p| p else current_status;
+const ScopedDependencies = struct {
+    status_diff: ?afk.schema.StatusDiff = null,
+    prev_cache: ?afk.schema.AfkStatus = null,
+
+    pub fn construct(self: *ScopedDependencies, parent: *SingletonDependencies, status: afk.schema.AfkStatus) void {
+        const previous_status = if (parent.previous_status) |p| p else status;
+        self.prev_cache = previous_status;
+    }
+
+    pub fn diff(self: *ScopedDependencies, parent: *SingletonDependencies, current_status: afk.schema.AfkStatus) afk.schema.StatusDiff {
+        if (self.status_diff) |d| {
+            return d;
+        }
+
+        const previous_status = if (self.prev_cache) |p| p else current_status;
         const result = afk.schema.StatusDiff{
             .prev = previous_status,
             .current = current_status,
+            .timestamp = std.time.timestamp(),
         };
-        self.previous_status = current_status;
+        parent.previous_status = current_status;
+        self.status_diff = result;
         return result;
     }
 };
@@ -48,11 +61,12 @@ pub fn main() !void {
     var server = try kwatcher.server.Server(
         "afk",
         "0.1.0",
-        Dependencies,
+        SingletonDependencies,
+        ScopedDependencies,
         afk.config.Config,
         routes,
         EventProvider,
-    ).init(allocator, Dependencies{});
+    ).init(allocator, .{});
     defer server.deinit();
 
     try server.run();
