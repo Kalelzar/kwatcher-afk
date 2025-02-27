@@ -6,10 +6,26 @@ pub const AfkStatus = enum {
     Inactive,
 };
 
+pub const StatusDiff = struct {
+    prev: AfkStatus,
+    current: AfkStatus,
+    pub fn hasChanged(self: *const StatusDiff) bool {
+        return self.prev != self.current;
+    }
+};
+
 pub const AfkHeartbeatProperties = kwatcher.schema.Schema(
     1,
     "afk",
     struct {
         status: AfkStatus,
+    },
+);
+
+pub const AfkStatusChangeProperties = kwatcher.schema.Schema(
+    1,
+    "afk.status-change",
+    struct {
+        diff: StatusDiff,
     },
 );
