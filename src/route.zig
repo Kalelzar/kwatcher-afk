@@ -8,7 +8,7 @@ pub fn @"publish:heartbeat amq.direct/heartbeat"(
     status: afk.schema.AfkStatus,
 ) kwatcher.schema.Heartbeat.V1(afk.schema.AfkHeartbeatProperties) {
     return .{
-        .timestamp = std.time.timestamp(),
+        .timestamp = std.time.microTimestamp(),
         .event = "afk-status",
         .user = user_info.v1(),
         .client = client_info.v1(),
@@ -24,7 +24,7 @@ pub fn @"publish:afkStatusChange amq.direct/afk-status"(
     status: afk.schema.StatusDiff,
 ) kwatcher.schema.Heartbeat.V1(afk.schema.AfkStatusChangeProperties) {
     return .{
-        .timestamp = status.timestamp,
+        .timestamp = std.time.microTimestamp(),
         .event = "afk-status-change",
         .user = user_info.v1(),
         .client = client_info.v1(),
