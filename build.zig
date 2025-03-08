@@ -28,7 +28,7 @@ const Builder = struct {
         });
         kwatcher_afk.link_libc = true;
         kwatcher_afk.addImport("kwatcher", kwatcher);
-        kwatcher_afk.addImport("kwatcher.afk", kwatcher_afk_lib);
+        kwatcher_afk.addImport("kwatcher-afk", kwatcher_afk_lib);
 
         return .{
             .b = b,
