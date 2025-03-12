@@ -69,5 +69,5 @@ pub fn main() !void {
     ).init(allocator, .{});
     defer server.deinit();
 
-    try server.run();
+    try server.start();
 }
