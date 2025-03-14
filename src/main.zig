@@ -58,6 +58,7 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
+    var singleton = SingletonDependencies{};
     var server = try kwatcher.server.Server(
         "afk",
         "0.1.0",
@@ -66,7 +67,10 @@ pub fn main() !void {
         afk.config.Config,
         routes,
         EventProvider,
-    ).init(allocator, .{});
+    ).init(
+        allocator,
+        &singleton,
+    );
     defer server.deinit();
 
     try server.start();
