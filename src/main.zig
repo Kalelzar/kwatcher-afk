@@ -41,7 +41,7 @@ const ScopedDependencies = struct {
 };
 
 const EventProvider = struct {
-    pub fn heartbeat(timer: kwatcher.server.Timer) !bool {
+    pub fn heartbeat(timer: kwatcher.Timer) !bool {
         return try timer.ready("heartbeat");
     }
 
@@ -65,6 +65,7 @@ pub fn main() !void {
         SingletonDependencies,
         ScopedDependencies,
         afk.config.Config,
+        struct {},
         routes,
         EventProvider,
     ).init(
