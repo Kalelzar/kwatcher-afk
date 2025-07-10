@@ -25,8 +25,8 @@
     // internet connectivity.
     .dependencies = .{
         .kwatcher = .{
-            .url = "git+https://github.com/Kalelzar/kwatcher.git#a3be59fe5a2f80e2091112d8bbc059dd2f32a14d",
-            .hash = "kwatcher-0.1.0-VYVPxlihAwD_aKcZieNA8ecQHWGJO_4HAUzt1LJowyCJ",
+            .url = "git+https://github.com/Kalelzar/kwatcher.git#e11c7f0533a9675b26f6f140ce39be0a637aadfd",
+            .hash = "kwatcher-0.1.0-VYVPxjmiAwCtygOH1r7i4G-9TyhwWy3-WdDajHaPWcg3",
         },
     },
     .paths = .{
