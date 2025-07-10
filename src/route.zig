@@ -18,7 +18,7 @@ pub fn @"publish:heartbeat amq.direct/heartbeat"(
     };
 }
 
-pub fn @"publish:afkStatusChange amq.direct/afk-status"(
+pub fn @"publish!:afkStatusChange amq.direct/afk-status"(
     user_info: kwatcher.schema.UserInfo,
     client_info: kwatcher.schema.ClientInfo,
     status: afk.schema.StatusDiff,
