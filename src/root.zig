@@ -7,7 +7,11 @@ pub const config = @import("config.zig");
 
 const platform = switch (builtin.target.os.tag) {
     .windows => @import("windows.zig"),
-    else => @compileError("Unsupported Platform/OS"),
+    else => struct {
+        pub fn timeSinceLastInput() !u64 {
+            return error.Unimplemented;
+        }
+    },
 };
 
 pub fn timeSinceLastInput() !u64 {

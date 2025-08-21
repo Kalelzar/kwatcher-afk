@@ -1,118 +1,107 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const Builder = struct {
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    opt: std.builtin.OptimizeMode,
-    check_step: *std.Build.Step,
-    kwatcher: *std.Build.Module,
-    kwatcher_afk: *std.Build.Module,
-    kwatcher_afk_lib: *std.Build.Module,
-
-    fn init(b: *std.Build) Builder {
-        const target = b.standardTargetOptions(.{});
-        const opt = b.standardOptimizeOption(.{});
-
-        const check_step = b.step("check", "");
-
-        const kwatcher = b.dependency("kwatcher", .{}).module("kwatcher");
-        const kwatcher_afk_lib = b.addModule("kwatcher", .{
-            .root_source_file = b.path("src/root.zig"),
-        });
-        kwatcher_afk_lib.link_libc = true;
-        kwatcher_afk_lib.addImport("kwatcher", kwatcher);
-
-        const kwatcher_afk = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-        });
-        kwatcher_afk.link_libc = true;
-        kwatcher_afk.addImport("kwatcher", kwatcher);
-        kwatcher_afk.addImport("kwatcher-afk", kwatcher_afk_lib);
-
-        return .{
-            .b = b,
-            .check_step = check_step,
-            .target = target,
-            .opt = opt,
-            .kwatcher = kwatcher,
-            .kwatcher_afk = kwatcher_afk,
-            .kwatcher_afk_lib = kwatcher_afk_lib,
-        };
-    }
-
-    fn addDependencies(
-        self: *Builder,
-        step: *std.Build.Step.Compile,
-    ) void {
-        step.root_module.addImport("kwatcher", self.kwatcher);
-        step.linkLibC();
-        step.linkSystemLibrary("rabbitmq.4");
-        switch (builtin.target.os.tag) {
-            .windows => {
-                step.linkSystemLibrary("user32");
-            },
-            else => @compileError("Unsupported Platform/OS"),
-        }
-        step.addLibraryPath(.{ .cwd_relative = "." });
-        step.addLibraryPath(.{ .cwd_relative = "." });
-    }
-
-    fn addExecutable(self: *Builder, name: []const u8, root_source_file: []const u8) *std.Build.Step.Compile {
-        return self.b.addExecutable(.{
-            .name = name,
-            .root_source_file = self.b.path(root_source_file),
-            .target = self.target,
-            .optimize = self.opt,
-        });
-    }
-
-    fn addStaticLibrary(self: *Builder, name: []const u8, root_source_file: []const u8) *std.Build.Step.Compile {
-        return self.b.addStaticLibrary(.{
-            .name = name,
-            .root_source_file = self.b.path(root_source_file),
-            .target = self.target,
-            .optimize = self.opt,
-        });
-    }
-
-    fn addTest(self: *Builder, name: []const u8, root_source_file: []const u8) *std.Build.Step.Compile {
-        return self.b.addTest(.{
-            .name = name,
-            .root_source_file = self.b.path(root_source_file),
-            .target = self.target,
-            .optimize = self.opt,
-        });
-    }
-
-    fn installAndCheck(self: *Builder, exe: *std.Build.Step.Compile) !void {
-        const check_exe = try self.b.allocator.create(std.Build.Step.Compile);
-        check_exe.* = exe.*;
-        self.check_step.dependOn(&check_exe.step);
-        self.b.installArtifact(exe);
-    }
-};
-
 pub fn build(b: *std.Build) !void {
-    var builder = Builder.init(b);
+    // Options
+    const build_all = b.option(bool, "all", "Build all components. You can still disable individual components") orelse false;
+    const build_exe = b.option(bool, "exe", "Build the application executable") orelse build_all;
+    const build_static_library = b.option(bool, "lib", "Build a static library object") orelse build_all;
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
 
-    const lib = builder.addStaticLibrary("kwatcher-afk-lib", "src/root.zig");
-    builder.addDependencies(lib);
-    try builder.installAndCheck(lib);
+    const kwatcher_afk_library = b.addModule("kwatcher_afk", .{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
-    const exe = builder.addExecutable("kwatcher-afk", "src/main.zig");
-    builder.addDependencies(exe);
-    try builder.installAndCheck(exe);
-    exe.root_module.addImport("kwatcher-afk", builder.kwatcher_afk_lib);
+    const kwatcher_afk_exe = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
-    const run_cmd = b.addRunArtifact(exe);
+    const tests = b.addTest(.{
+        .root_module = kwatcher_afk_library,
+        .target = target,
+        .optimize = optimize,
+    });
 
-    run_cmd.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
+    // Artifacts:
+    const exe = b.addExecutable(.{
+        .name = "kwatcher-afk",
+        .root_module = kwatcher_afk_exe,
+    });
+    if (build_exe) {
+        b.installArtifact(exe);
     }
 
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
+    const lib = b.addStaticLibrary(.{
+        .name = "lib-kwatcher-afk",
+        .root_module = kwatcher_afk_library,
+    });
+    if (build_static_library) {
+        b.installArtifact(lib);
+    }
+
+    const run_tests = b.addRunArtifact(tests);
+
+    const install_docs = b.addInstallDirectory(
+        .{
+            .source_dir = lib.getEmittedDocs(),
+            .install_dir = .prefix,
+            .install_subdir = "docs",
+        },
+    );
+
+    const fmt = b.addFmt(.{
+        .paths = &.{
+            "src/",
+            "build.zig",
+            "build.zig.zon",
+        },
+        .check = true,
+    });
+
+    // Steps:
+    const check = b.step("check", "Build without generating artifacts.");
+    check.dependOn(&lib.step);
+    check.dependOn(&exe.step);
+
+    const test_step = b.step("test", "Run the unit tests.");
+    test_step.dependOn(&run_tests.step);
+    // - fmt
+    const fmt_step = b.step("fmt", "Check formatting");
+    fmt_step.dependOn(&fmt.step);
+    check.dependOn(fmt_step);
+    b.getInstallStep().dependOn(fmt_step);
+    // - docs
+    const docs_step = b.step("docs", "Generate docs");
+    docs_step.dependOn(&install_docs.step);
+    docs_step.dependOn(&lib.step);
+
+    // Dependencies:
+    // 1st Party:
+    const kw = b.dependency("kwatcher", .{
+        .target = target,
+        .optimize = optimize,
+        .lib = true,
+        .example = false,
+        .dump = false,
+    });
+    const kwatcher = kw.module("kwatcher");
+    // 3rd Party:
+    // Imports:
+    // Internal:
+    kwatcher_afk_exe.addImport("kwatcher", kwatcher);
+    kwatcher_afk_exe.addImport("kwatcher-afk", kwatcher_afk_library);
+    // 1st Party:
+    kwatcher_afk_library.addImport("kwatcher", kwatcher);
+    // 3rd Party:
+    switch (builtin.target.os.tag) {
+        .windows => {
+            kwatcher_afk_library.linkSystemLibrary("user32", .{ .preferred_link_mode = .dynamic });
+        },
+        else => std.log.warn("Afk tracking functionality is currently stubbed on systems other than Windows.", .{}),
+    }
 }

@@ -1,0 +1,56 @@
+name: Deploy
+on:
+  push:
+    branches:
+      - 'master'
+    tags:
+      - '*'
+jobs:
+  build:
+    runs-on: docker
+    strategy:
+      fail-fast: false
+      matrix:
+        targets:
+          - aarch64-linux-gnu
+          - x86_64-linux-gnu
+          - x86_64-windows
+    container:
+      image: git.kalelzar.xyz/kalelzar/kwatcher-build:0.2-alpine-25.5
+      credentials:
+        username: ${{secrets.USER}}
+        password: ${{secrets.TOKEN}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{secrets.FETCH_TOKEN}}
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: ${{ forge.repository }}-zig-${{ matrix.targets }}-${{ hashFiles('build.zig.zon') }}
+          restore-keys: |
+            ${{ forge.repository }}-zig-${{ matrix.targets }}-
+      - name: Build
+        run: zig build -Dexe -Doptimize=ReleaseFast -Dtarget=${{matrix.targets}} --summary all 
+      - name: Publish
+        run: |
+          version="$(cat build.zig.zon | grep "\.version" | sed -E 's/.*"(.*)".*/\1/')"
+          commit="${{forge.sha}}"
+          if [ "${{forge.ref_type}}" = "tag" ]; then
+            packageVersion="${{forge.ref_name}}"
+          else
+            packageVersion="$version+$commit"
+          fi
+          tarball="kwatcher-afk-${{ matrix.targets }}.tar"
+          cd zig-out/bin
+          tar -cf "../../$tarball" .
+          cd ../..
+          xz "$tarball"
+          curl --user ${{secrets.USER}}:${{secrets.TOKEN}} \
+               --upload-file "$tarball.xz" \
+               "https://git.kalelzar.xyz/api/packages/${{secrets.USER}}/generic/kwatcher-afk/${packageVersion}/$tarball.xz"
