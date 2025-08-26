@@ -21,12 +21,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const tests = b.addTest(.{
-        .root_module = kwatcher_afk_library,
-        .target = target,
-        .optimize = optimize,
-    });
-
     // Artifacts:
     const exe = b.addExecutable(.{
         .name = "kwatcher-afk",
@@ -36,13 +30,18 @@ pub fn build(b: *std.Build) !void {
         b.installArtifact(exe);
     }
 
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = "lib-kwatcher-afk",
         .root_module = kwatcher_afk_library,
+        .linkage = .static,
     });
     if (build_static_library) {
         b.installArtifact(lib);
     }
+
+    const tests = b.addTest(.{
+        .root_module = kwatcher_afk_library,
+    });
 
     const run_tests = b.addRunArtifact(tests);
 
