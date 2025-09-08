@@ -106,10 +106,14 @@ pub fn build(b: *std.Build) !void {
         .linux => {
             switch (target.result.cpu.arch) {
                 .aarch64 => {
+                    kwatcher_afk_library.addObjectFile(b.path("vendor/libxdmcp/aarch64/libXdmcp.so.6.0.0"));
+                    kwatcher_afk_library.addObjectFile(b.path("vendor/libxau/aarch64/libXau.so.6.0.0"));
                     kwatcher_afk_library.addObjectFile(b.path("vendor/libxcb/aarch64/libxcb.a"));
                     kwatcher_afk_library.addObjectFile(b.path("vendor/libxcb/aarch64/libxcb-screensaver.a"));
                 },
                 .x86_64 => {
+                    kwatcher_afk_library.addObjectFile(b.path("vendor/libxdmcp/x86_64/libXdmcp.so.6.0.0"));
+                    kwatcher_afk_library.addObjectFile(b.path("vendor/libxau/x86_64/libXau.so.6.0.0"));
                     kwatcher_afk_library.addObjectFile(b.path("vendor/libxcb/x86_64/libxcb.a"));
                     kwatcher_afk_library.addObjectFile(b.path("vendor/libxcb/x86_64/libxcb-screensaver.a"));
                 },
