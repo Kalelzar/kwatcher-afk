@@ -1,5 +1,4 @@
 const std = @import("std");
-const schema = @import("schema.zig");
 const windows = std.os.windows;
 
 const LASTINPUTINFO = extern struct {
