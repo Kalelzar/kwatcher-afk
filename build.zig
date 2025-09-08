@@ -104,8 +104,17 @@ pub fn build(b: *std.Build) !void {
             kwatcher_afk_library.linkSystemLibrary("user32", .{ .preferred_link_mode = .dynamic });
         },
         .linux => {
-            kwatcher_afk_library.linkSystemLibrary("xcb", .{ .preferred_link_mode = .static });
-            kwatcher_afk_library.linkSystemLibrary("xcb-screensaver", .{ .preferred_link_mode = .static });
+            switch (target.result.cpu.arch) {
+                .aarch64 => {
+                    kwatcher_afk_library.addObjectFile(b.path("vendor/libxcb/aarch64/libxcb.a"));
+                    kwatcher_afk_library.addObjectFile(b.path("vendor/libxcb/aarch64/libxcb-screensaver.a"));
+                },
+                .x86_64 => {
+                    kwatcher_afk_library.addObjectFile(b.path("vendor/libxcb/x86_64/libxcb.a"));
+                    kwatcher_afk_library.addObjectFile(b.path("vendor/libxcb/x86_64/libxcb-screensaver.a"));
+                },
+                else => std.log.warn("Unsupported arch", .{}),
+            }
         },
         else => std.log.warn("Afk tracking functionality is currently stubbed on systems other than Windows.", .{}),
     }
