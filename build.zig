@@ -13,14 +13,14 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
-        .link_libc = builtin.target.os.tag == .linux,
+        .link_libc = target.result.os.tag == .linux,
     });
 
     const kwatcher_afk_exe = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
-        .link_libc = builtin.target.os.tag == .linux,
+        .link_libc = target.result.os.tag == .linux,
     });
 
     // Artifacts:
@@ -99,10 +99,8 @@ pub fn build(b: *std.Build) !void {
     // 1st Party:
     kwatcher_afk_library.addImport("kwatcher", kwatcher);
     // 3rd Party:
-    switch (builtin.target.os.tag) {
-        .windows => {
-            kwatcher_afk_library.linkSystemLibrary("user32", .{ .preferred_link_mode = .dynamic });
-        },
+    switch (target.result.os.tag) {
+        .windows => {},
         .linux => {
             switch (target.result.cpu.arch) {
                 .aarch64 => {
