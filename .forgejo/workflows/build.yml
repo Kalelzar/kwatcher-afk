@@ -16,6 +16,8 @@ jobs:
         with:
           submodules: recursive
           token: ${{secrets.FETCH_TOKEN}}
+      - name: Pkgs
+        run: apk add libxcb-static
       - name: Get Zig
         uses: https://github.com/mlugg/setup-zig@v2
       - name: Check
