@@ -61,7 +61,7 @@ pub fn main() !void {
     var singleton = SingletonDependencies{};
     var server = try kwatcher.server.Server(
         "afk",
-        "0.1.1",
+        "0.1.2",
         SingletonDependencies,
         ScopedDependencies,
         afk.config.Config,
