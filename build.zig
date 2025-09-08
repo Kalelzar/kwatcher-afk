@@ -13,12 +13,14 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = builtin.target.os.tag == .linux,
     });
 
     const kwatcher_afk_exe = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = builtin.target.os.tag == .linux,
     });
 
     // Artifacts:
@@ -100,6 +102,10 @@ pub fn build(b: *std.Build) !void {
     switch (builtin.target.os.tag) {
         .windows => {
             kwatcher_afk_library.linkSystemLibrary("user32", .{ .preferred_link_mode = .dynamic });
+        },
+        .linux => {
+            kwatcher_afk_library.linkSystemLibrary("xcb", .{ .preferred_link_mode = .static });
+            kwatcher_afk_library.linkSystemLibrary("xcb-screensaver", .{ .preferred_link_mode = .static });
         },
         else => std.log.warn("Afk tracking functionality is currently stubbed on systems other than Windows.", .{}),
     }
