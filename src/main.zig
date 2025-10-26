@@ -1,8 +1,22 @@
 const std = @import("std");
+const log = std.log.scoped(.afk);
 const kwatcher = @import("kwatcher");
 const afk = @import("kwatcher-afk");
 
 const routes = @import("route.zig");
+
+pub const std_options = std.Options{
+    .log_scope_levels = &[_]std.log.ScopeLevel{
+        .{ .scope = .dependency, .level = .info },
+        .{ .scope = .server, .level = .info },
+        .{ .scope = .amqp_client, .level = .info },
+        .{ .scope = .circuit_breaker_client, .level = .warn },
+        .{ .scope = .intern_fmt_cache, .level = .warn },
+        .{ .scope = .replay, .level = .info },
+        .{ .scope = .client, .level = .info },
+        .{ .scope = .afk, .level = .info },
+    },
+};
 
 const SingletonDependencies = struct {
     previous_status: ?afk.schema.AfkStatus = null,
@@ -35,7 +49,31 @@ const ScopedDependencies = struct {
             .timestamp = std.time.timestamp(),
         };
         parent.previous_status = current_status;
+
+        const epoch = std.time.epoch.EpochSeconds{
+            .secs = @intCast(std.time.timestamp()),
+        };
+        const epoch_day = epoch.getEpochDay();
+        const epoch_year = epoch_day.calculateYearDay();
+
+        if (result.hasChanged()) {
+            log.info(
+                "[{d:04}-{d:02}-{d:02}T{d:02}:{d:02}:{d:02}] Status changed: {t} -> {t}",
+                .{
+                    epoch_year.year,
+                    epoch_year.calculateMonthDay().month,
+                    epoch_year.calculateMonthDay().day_index,
+                    epoch.getDaySeconds().getHoursIntoDay(),
+                    epoch.getDaySeconds().getMinutesIntoHour(),
+                    epoch.getDaySeconds().getSecondsIntoMinute(),
+                    result.prev,
+                    result.current,
+                },
+            );
+        }
+
         self.status_diff = result;
+
         return result;
     }
 };
@@ -61,7 +99,7 @@ pub fn main() !void {
     var singleton = SingletonDependencies{};
     var server = try kwatcher.server.Server(
         "afk",
-        "0.1.2",
+        "0.1.3",
         SingletonDependencies,
         ScopedDependencies,
         afk.config.Config,
