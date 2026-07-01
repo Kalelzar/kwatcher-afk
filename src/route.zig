@@ -16,7 +16,12 @@ pub fn @"publish:heartbeat amq.direct/heartbeat"(
 ) !core.schema.Heartbeat.V1(afk.schema.AfkHeartbeatProperties) {
     const ts = ctx.@"0";
     const override_status = ctx.@"1" orelse status;
-    const cached = cache.get(id) catch afk.schema.AfkStatusEntry{ .status = override_status, .timestamp = ts - 1 };
+
+    const cached = cache.get(id) catch |e| switch (e) {
+        error.CacheMiss => afk.schema.AfkStatusEntry{ .status = override_status, .timestamp = ts - 1 },
+        else => return e,
+    };
+
     if (ts >= cached.timestamp) {
         _ = try cache.push(.{ .status = override_status, .timestamp = ts }, id);
     }
@@ -34,7 +39,25 @@ pub fn @"publish:heartbeat amq.direct/heartbeat"(
         );
     }
 
-    if (cached.status != override_status) {
+    if (ctx.@"1" == null and cached.status != override_status) {
+        const epoch = std.time.epoch.EpochSeconds{ .secs = @intCast(@divFloor(ts, std.time.us_per_s)) };
+        const year_day = epoch.getEpochDay().calculateYearDay();
+        const month_day = year_day.calculateMonthDay();
+        const day_secs = epoch.getDaySeconds();
+        std.log.info(
+            "[{d:04}-{d:02}-{d:02}T{d:02}:{d:02}:{d:02}] Status changed: {t} -> {t}",
+            .{
+                year_day.year,
+                month_day.month.numeric(),
+                month_day.day_index + 1,
+                day_secs.getHoursIntoDay(),
+                day_secs.getMinutesIntoHour(),
+                day_secs.getSecondsIntoMinute(),
+                cached.status,
+                override_status,
+            },
+        );
+
         const amqp = try inj.require(drivers.Scheduler(.amqp));
         try amqp.publish(
             .{

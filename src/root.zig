@@ -18,6 +18,6 @@ const platform = switch (builtin.target.os.tag) {
 
 pub const State = platform.State;
 
-pub fn timeSinceLastInput(ctx: *const State) !u64 {
+pub fn timeSinceLastInput(ctx: *State) !u64 {
     return platform.timeSinceLastInput(ctx);
 }

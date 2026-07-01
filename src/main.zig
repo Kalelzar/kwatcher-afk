@@ -33,17 +33,17 @@ pub const FallbackConfig = struct {
 const SingletonDependencies = struct {
     state: ?afk.State = null,
 
-    pub fn stateFac(self: *SingletonDependencies) afk.State {
-        if (self.state) |s| {
+    pub fn stateFac(self: *SingletonDependencies) !*afk.State {
+        if (self.state) |*s| {
             return s;
         } else {
-            self.state = .init();
-            return self.state.?;
+            self.state = try .init();
+            return &self.state.?;
         }
     }
 
-    pub fn status(config: *afk.config.Config, state: afk.State) !afk.schema.AfkStatus {
-        const time = try afk.timeSinceLastInput(&state);
+    pub fn status(config: *afk.config.Config, state: *afk.State) !afk.schema.AfkStatus {
+        const time = try afk.timeSinceLastInput(state);
         const s = if (time < config.afk_timeout) afk.schema.AfkStatus.Active else afk.schema.AfkStatus.Inactive;
         return s;
     }

@@ -34,18 +34,28 @@ const xcb_screensaver_query_info_reply_t = extern struct {
 
 extern fn xcb_connect(displayname: ?[*:0]const u8, screenp: ?*i32) *xcb_connection_t;
 extern fn xcb_disconnect(c: *xcb_connection_t) void;
+extern fn xcb_connection_has_error(c: *xcb_connection_t) c_int;
 extern fn xcb_get_setup(c: *xcb_connection_t) *xcb_setup_t;
 extern fn xcb_setup_roots_iterator(R: *xcb_setup_t) xcb_screen_iterator_t;
 
 extern fn xcb_screensaver_query_info(c: *xcb_connection_t, drawable: xcb_drawable_t) xcb_screensaver_query_info_cookie_t;
-extern fn xcb_screensaver_query_info_reply(c: *xcb_connection_t, cookie: xcb_screensaver_query_info_cookie_t, e: ?**xcb_generic_error_t) *xcb_screensaver_query_info_reply_t;
+extern fn xcb_screensaver_query_info_reply(c: *xcb_connection_t, cookie: xcb_screensaver_query_info_cookie_t, e: ?**xcb_generic_error_t) ?*xcb_screensaver_query_info_reply_t;
 
 pub const State = struct {
     connection: *xcb_connection_t,
     screen: *xcb_screen_t,
 
-    pub fn init() State {
+    pub fn init() !State {
+        return connect();
+    }
+
+    fn connect() !State {
         const conn = xcb_connect(null, null);
+        // xcb_connect never returns null; a failed connection is reported here.
+        if (xcb_connection_has_error(conn) != 0) {
+            xcb_disconnect(conn);
+            return error.XcbConnectionFailed;
+        }
         const scr = xcb_setup_roots_iterator(xcb_get_setup(conn)).data;
         return .{
             .connection = conn,
@@ -53,15 +63,29 @@ pub const State = struct {
         };
     }
 
+    /// Re-establish a lost connection (X server restart/logout) in place. Dials
+    /// the new connection first so a failure leaves the old handle untouched
+    /// rather than dangling.
+    pub fn reconnect(state: *State) !void {
+        const fresh = try connect();
+        xcb_disconnect(state.connection);
+        state.* = fresh;
+    }
+
     pub fn deinit(state: *State) void {
         xcb_disconnect(state.connection);
     }
 };
 
-pub fn timeSinceLastInput(state: *const State) !u64 {
+pub fn timeSinceLastInput(state: *State) !u64 {
+    // Recover from a dead X connection instead of dereferencing it and crashing.
+    if (xcb_connection_has_error(state.connection) != 0) {
+        try state.reconnect();
+    }
+
     const cookie = xcb_screensaver_query_info(state.connection, state.screen.root);
-    //FIXME: Check for errors here:
-    const info = xcb_screensaver_query_info_reply(state.connection, cookie, null);
+    const info = xcb_screensaver_query_info_reply(state.connection, cookie, null) orelse
+        return error.XcbQueryFailed;
     defer std.c.free(info);
     const time = info.ms_since_user_input;
     return time / std.time.ms_per_s;

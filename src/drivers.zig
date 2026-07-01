@@ -1,3 +1,4 @@
+const std = @import("std");
 const core = @import("kw-core");
 const amqp = @import("kw-amqp");
 const cron = @import("kw-cron");
@@ -12,6 +13,12 @@ pub const Context = struct {
         .assigned_id = null,
         .state = .unregistered,
     },
+
+    pub fn deinit(self: *Context, alloc: std.mem.Allocator) void {
+        if (self.client.assigned_id) |ai| {
+            alloc.free(ai);
+        }
+    }
 };
 
 pub const protocols: []const protocol.Kind = &.{.client_registration};
