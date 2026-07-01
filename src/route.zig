@@ -1,35 +1,76 @@
 const std = @import("std");
-const kwatcher = @import("kwatcher");
+const core = @import("kw-core");
+const kw_cache = @import("kw-cache");
 const afk = @import("kwatcher-afk");
+const drivers = @import("drivers.zig");
+
+const id: struct { u8 } = .{0};
 
 pub fn @"publish:heartbeat amq.direct/heartbeat"(
-    user_info: kwatcher.schema.UserInfo,
-    client_info: kwatcher.schema.ClientInfo,
+    ctx: struct { i64, ?afk.schema.AfkStatus },
+    user_info: *core.schema.UserInfo,
+    client_info: core.schema.ClientInfo,
     status: afk.schema.AfkStatus,
-) kwatcher.schema.Heartbeat.V1(afk.schema.AfkHeartbeatProperties) {
+    cache: kw_cache.Cache(afk.schema.AfkStatusEntry),
+    inj: *core.deps.DepCtx,
+) !core.schema.Heartbeat.V1(afk.schema.AfkHeartbeatProperties) {
+    const ts = ctx.@"0";
+    const override_status = ctx.@"1" orelse status;
+    const cached = cache.get(id) catch afk.schema.AfkStatusEntry{ .status = override_status, .timestamp = ts - 1 };
+    if (ts >= cached.timestamp) {
+        _ = try cache.push(.{ .status = override_status, .timestamp = ts }, id);
+    }
+
+    if (ts - cached.timestamp > std.time.us_per_s * 300) {
+        const amqp = try inj.require(drivers.Scheduler(.amqp));
+        std.log.warn("Timeskip! Missing {d}us worth of events. Applying correction.", .{ts - cached.timestamp});
+        try amqp.publish(
+            .{ .heartbeat = .{ cached.timestamp + std.time.us_per_s * 5, .Inactive } },
+            .{ .inj = inj },
+        );
+        try amqp.publish(
+            .{ .heartbeat = .{ ts - std.time.us_per_s * 5, .Inactive } },
+            .{ .inj = inj },
+        );
+    }
+
+    if (cached.status != override_status) {
+        const amqp = try inj.require(drivers.Scheduler(.amqp));
+        try amqp.publish(
+            .{
+                .afkStatusChange = .{.{
+                    .prev = cached.status,
+                    .current = override_status,
+                    .timestamp = ts,
+                }},
+            },
+            .{ .inj = inj },
+        );
+    }
+
     return .{
-        .timestamp = std.time.microTimestamp(),
+        .timestamp = ts,
         .event = "afk-status",
         .user = user_info.v1(),
         .client = client_info.v1(),
         .properties = .{
-            .status = status,
+            .status = override_status,
         },
     };
 }
 
 pub fn @"publish!:afkStatusChange amq.direct/afk-status"(
-    user_info: kwatcher.schema.UserInfo,
-    client_info: kwatcher.schema.ClientInfo,
-    status: afk.schema.StatusDiff,
-) kwatcher.schema.Heartbeat.V1(afk.schema.AfkStatusChangeProperties) {
+    ctx: struct { afk.schema.StatusDiff },
+    user_info: *core.schema.UserInfo,
+    client_info: core.schema.ClientInfo,
+) core.schema.Heartbeat.V1(afk.schema.AfkStatusChangeProperties) {
     return .{
         .timestamp = std.time.microTimestamp(),
         .event = "afk-status-change",
         .user = user_info.v1(),
         .client = client_info.v1(),
         .properties = .{
-            .diff = status,
+            .diff = ctx.@"0",
         },
     };
 }

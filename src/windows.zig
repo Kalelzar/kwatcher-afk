@@ -23,7 +23,14 @@ pub fn timeOfLastInput() !u64 {
     return info.dwTime;
 }
 
-pub fn timeSinceLastInput() !u64 {
+pub const State = struct {
+    pub fn init() State {
+        return .{};
+    }
+    pub inline fn deinit(_: *State) void {}
+};
+
+pub fn timeSinceLastInput(_: *const State) !u64 {
     const lastTime = try timeOfLastInput();
     const tick: u64 = GetTickCount();
 

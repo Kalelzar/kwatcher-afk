@@ -1,9 +1,13 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const log = std.log.scoped(.afk);
+const core = @import("kw-core");
 const kwatcher = @import("kwatcher");
+const amqp = @import("kw-amqp");
+const cache = @import("kw-cache");
+const protocol = @import("kw-protocol");
 const afk = @import("kwatcher-afk");
-
-const routes = @import("route.zig");
+pub const drivers = @import("drivers.zig");
 
 pub const std_options = std.Options{
     .log_scope_levels = &[_]std.log.ScopeLevel{
@@ -18,99 +22,96 @@ pub const std_options = std.Options{
     },
 };
 
-const SingletonDependencies = struct {
-    previous_status: ?afk.schema.AfkStatus = null,
+pub const FallbackConfig = struct {
+    driver: drivers.drivers.DriverConfig(),
+    afk: afk.config.Config,
+    protocols: struct {
+        client_registration: protocol.client_registration.Config = .{},
+    } = .{},
+};
 
-    pub fn status(config: afk.config.Config) !afk.schema.AfkStatus {
-        const time = try afk.timeSinceLastInput();
-        const s = if (time < config.afk.afk_timeout) afk.schema.AfkStatus.Active else afk.schema.AfkStatus.Inactive;
+const SingletonDependencies = struct {
+    state: ?afk.State = null,
+
+    pub fn stateFac(self: *SingletonDependencies) afk.State {
+        if (self.state) |s| {
+            return s;
+        } else {
+            self.state = .init();
+            return self.state.?;
+        }
+    }
+
+    pub fn status(config: *afk.config.Config, state: afk.State) !afk.schema.AfkStatus {
+        const time = try afk.timeSinceLastInput(&state);
+        const s = if (time < config.afk_timeout) afk.schema.AfkStatus.Active else afk.schema.AfkStatus.Inactive;
         return s;
     }
 };
 
-const ScopedDependencies = struct {
-    status_diff: ?afk.schema.StatusDiff = null,
-    prev_cache: ?afk.schema.AfkStatus = null,
+var config_slot: FallbackConfig = undefined;
 
-    pub fn construct(self: *ScopedDependencies, parent: *SingletonDependencies, status: afk.schema.AfkStatus) void {
-        const previous_status = if (parent.previous_status) |p| p else status;
-        self.prev_cache = previous_status;
+pub fn juicyMain(allocator: std.mem.Allocator) !void {
+    // TODO: Extract this to driver?
+    if (comptime builtin.os.tag == .linux) {
+        var mask = std.posix.sigemptyset();
+        std.posix.sigaddset(&mask, std.posix.SIG.INT);
+        std.posix.sigaddset(&mask, std.posix.SIG.TERM);
+        std.posix.sigprocmask(std.posix.SIG.BLOCK, &mask, null);
     }
 
-    pub fn diff(self: *ScopedDependencies, parent: *SingletonDependencies, current_status: afk.schema.AfkStatus) afk.schema.StatusDiff {
-        if (self.status_diff) |d| {
-            return d;
-        }
-
-        const previous_status = if (self.prev_cache) |p| p else current_status;
-        const result = afk.schema.StatusDiff{
-            .prev = previous_status,
-            .current = current_status,
-            .timestamp = std.time.timestamp(),
-        };
-        parent.previous_status = current_status;
-
-        const epoch = std.time.epoch.EpochSeconds{
-            .secs = @intCast(std.time.timestamp()),
-        };
-        const epoch_day = epoch.getEpochDay();
-        const epoch_year = epoch_day.calculateYearDay();
-
-        if (result.hasChanged()) {
-            log.info(
-                "[{d:04}-{d:02}-{d:02}T{d:02}:{d:02}:{d:02}] Status changed: {t} -> {t}",
-                .{
-                    epoch_year.year,
-                    epoch_year.calculateMonthDay().month,
-                    epoch_year.calculateMonthDay().day_index,
-                    epoch.getDaySeconds().getHoursIntoDay(),
-                    epoch.getDaySeconds().getMinutesIntoHour(),
-                    epoch.getDaySeconds().getSecondsIntoMinute(),
-                    result.prev,
-                    result.current,
-                },
-            );
-        }
-
-        self.status_diff = result;
-
-        return result;
-    }
-};
-
-const EventProvider = struct {
-    pub fn heartbeat(timer: kwatcher.Timer) !bool {
-        return try timer.ready("heartbeat");
-    }
-
-    pub fn afkStatusChange(diff: afk.schema.StatusDiff) bool {
-        return diff.hasChanged();
-    }
-
-    pub fn disabled() bool {
-        return false;
-    }
-};
-
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    try core.metrics.initialize(allocator, "test", "0.0.0", "test", .{});
+    defer core.metrics.deinitialize();
 
     var singleton = SingletonDependencies{};
-    var server = try kwatcher.server.Server(
-        "afk",
-        "0.1.3",
-        SingletonDependencies,
-        ScopedDependencies,
-        afk.config.Config,
-        struct {},
-        routes,
-        EventProvider,
-    ).init(
-        allocator,
-        &singleton,
-    );
+    defer if (singleton.state) |*s| s.deinit();
+
+    const memcache = cache.context.memory;
+
+    const AfkCache = memcache.Container(memcache.Cache(afk.schema.AfkStatusEntry, .{u8})
+        .key(.afk_status)
+        .evict(.none)
+        .residency(.{ .unlimited = {} })
+        .expiration(.{ .unlimited = {} }));
+
+    var c = AfkCache{};
+
+    config_slot = try core.config.findConfigFile(FallbackConfig, arena.allocator(), "afk_v2") orelse {
+        std.log.err("Could not load config!", .{});
+        return error.MissingConfig;
+    };
+
+    const deps = core.deps.DependencyContainer(FallbackConfig)
+        .new(drivers.drivers, allocator)
+        .with(.all, kwatcher.default.withDefault(&config_slot, .{
+            .name = "afk",
+            .version = "1.0.0",
+        }), allocator)
+        .with(.amqp, protocol.deps(drivers.drivers, drivers.Context, drivers.protocols), allocator)
+        .with(.all, kwatcher.default.config(afk.config.Config, "afk"), allocator)
+        .with(.amqp, amqp.defaultFor(drivers.drivers, drivers.Context), allocator)
+        .static(.amqp, &singleton)
+        .static(.amqp, &c);
+
+    var server = try kwatcher.server.Server(@TypeOf(deps), drivers.drivers)
+        .init(allocator, deps, 2);
     defer server.deinit();
 
     try server.start();
+}
+
+pub fn main() !void {
+    if (comptime builtin.mode == .Debug) {
+        var gpa = std.heap.GeneralPurposeAllocator(.{
+            .stack_trace_frames = 10,
+        }).init;
+        const allocator = gpa.allocator();
+        try juicyMain(allocator);
+        _ = gpa.detectLeaks();
+    } else {
+        const alloc = std.heap.smp_allocator;
+        try juicyMain(alloc);
+    }
 }

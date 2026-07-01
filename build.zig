@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const docgen = @import("kw_docgen").build_docgen;
 
 pub fn build(b: *std.Build) !void {
     // Options
@@ -27,6 +28,7 @@ pub fn build(b: *std.Build) !void {
     const exe = b.addExecutable(.{
         .name = "kwatcher-afk",
         .root_module = kwatcher_afk_exe,
+        .use_llvm = true, // Due to https://github.com/ziglang/zig/issues/24181
     });
     if (build_exe) {
         b.installArtifact(exe);
@@ -83,21 +85,27 @@ pub fn build(b: *std.Build) !void {
 
     // Dependencies:
     // 1st Party:
-    const kw = b.dependency("kwatcher", .{
-        .target = target,
-        .optimize = optimize,
-        .lib = true,
-        .example = false,
-        .dump = false,
-    });
-    const kwatcher = kw.module("kwatcher");
+    const kw_core = b.dependency("kw_core", .{ .target = target, .optimize = optimize }).module("kw-core");
+    const kwatcher = b.dependency("kwatcher", .{ .target = target, .optimize = optimize }).module("kwatcher");
+    const kw_amqp = b.dependency("kw_amqp", .{ .target = target, .optimize = optimize }).module("kw-amqp");
+    const kw_cache = b.dependency("kw_cache", .{ .target = target, .optimize = optimize }).module("kw-cache");
+    const kw_cron = b.dependency("kw_cron", .{ .target = target, .optimize = optimize }).module("kw-cron");
+    const kw_protocol = b.dependency("kw_protocol", .{ .target = target, .optimize = optimize }).module("kw-protocol");
+    const kw_signal = b.dependency("kw_signal", .{ .target = target, .optimize = optimize }).module("kw-signal");
     // 3rd Party:
     // Imports:
     // Internal:
-    kwatcher_afk_exe.addImport("kwatcher", kwatcher);
     kwatcher_afk_exe.addImport("kwatcher-afk", kwatcher_afk_library);
-    // 1st Party:
-    kwatcher_afk_library.addImport("kwatcher", kwatcher);
+    // 1st Party (kwatcher packages, wired into both the exe and library modules):
+    inline for (.{ kwatcher_afk_exe, kwatcher_afk_library }) |m| {
+        m.addImport("kw-core", kw_core);
+        m.addImport("kwatcher", kwatcher);
+        m.addImport("kw-amqp", kw_amqp);
+        m.addImport("kw-cache", kw_cache);
+        m.addImport("kw-cron", kw_cron);
+        m.addImport("kw-protocol", kw_protocol);
+        m.addImport("kw-signal", kw_signal);
+    }
     // 3rd Party:
     switch (target.result.os.tag) {
         .windows => {},
@@ -120,4 +128,24 @@ pub fn build(b: *std.Build) !void {
         },
         else => std.log.warn("Afk tracking functionality is currently stubbed on systems other than Windows.", .{}),
     }
+
+    // Docgen: wired after the exe module's imports are in place so the helper can
+    // mirror them onto the host-target entrypoint it derives internally. Generates
+    // an AsyncAPI doc for the amqp driver; cron has no documentation backend.
+    const kw_docgen_none = b.dependency("kw_docgen_none", .{ .target = target, .optimize = optimize }).module("kw-docgen--none");
+    const kw_docgen_amqp = b.dependency("kw_docgen_amqp", .{ .target = target, .optimize = optimize }).module("kw-docgen--amqp");
+
+    const docs = docgen.wire(b, .{
+        .target = target,
+        .optimize = optimize,
+        .consumer = kwatcher_afk_exe,
+        .backends = &.{
+            .{ .kind = "cron", .module = kw_docgen_none },
+            .{ .kind = "amqp", .module = kw_docgen_amqp },
+            .{ .kind = "internal", .module = kw_docgen_none },
+            .{ .kind = "signal", .module = kw_docgen_none },
+        },
+    });
+
+    exe.step.dependOn(&docs.docgen_step.step);
 }

@@ -24,8 +24,35 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
+        .kw_core = .{
+            .path = "../kwatcher/packages/core",
+        },
         .kwatcher = .{
-            .path = "vendor/kwatcher",
+            .path = "../kwatcher/packages/runtime",
+        },
+        .kw_amqp = .{
+            .path = "../kwatcher/packages/amqp",
+        },
+        .kw_cache = .{
+            .path = "../kwatcher/packages/cache",
+        },
+        .kw_cron = .{
+            .path = "../kwatcher/packages/cron",
+        },
+        .kw_protocol = .{
+            .path = "../kwatcher/packages/protocol",
+        },
+        .kw_signal = .{
+            .path = "../kwatcher/packages/signal",
+        },
+        .kw_docgen = .{
+            .path = "../kwatcher/packages/docgen",
+        },
+        .kw_docgen_none = .{
+            .path = "../kwatcher/packages/docgen-none",
+        },
+        .kw_docgen_amqp = .{
+            .path = "../kwatcher/packages/docgen-amqp",
         },
     },
     .paths = .{

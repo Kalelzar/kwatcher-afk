@@ -1,9 +1,14 @@
 const std = @import("std");
-const kwatcher = @import("kwatcher");
+const core = @import("kw-core");
 
 pub const AfkStatus = enum {
     Active,
     Inactive,
+};
+
+pub const AfkStatusEntry = struct {
+    status: AfkStatus,
+    timestamp: i64,
 };
 
 pub const StatusDiff = struct {
@@ -15,7 +20,7 @@ pub const StatusDiff = struct {
     }
 };
 
-pub const AfkHeartbeatProperties = kwatcher.schema.Schema(
+pub const AfkHeartbeatProperties = core.schema.Schema(
     1,
     "afk",
     struct {
@@ -23,7 +28,7 @@ pub const AfkHeartbeatProperties = kwatcher.schema.Schema(
     },
 );
 
-pub const AfkStatusChangeProperties = kwatcher.schema.Schema(
+pub const AfkStatusChangeProperties = core.schema.Schema(
     1,
     "afk.status-change",
     struct {

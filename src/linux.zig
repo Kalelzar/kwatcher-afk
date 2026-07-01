@@ -40,14 +40,28 @@ extern fn xcb_setup_roots_iterator(R: *xcb_setup_t) xcb_screen_iterator_t;
 extern fn xcb_screensaver_query_info(c: *xcb_connection_t, drawable: xcb_drawable_t) xcb_screensaver_query_info_cookie_t;
 extern fn xcb_screensaver_query_info_reply(c: *xcb_connection_t, cookie: xcb_screensaver_query_info_cookie_t, e: ?**xcb_generic_error_t) *xcb_screensaver_query_info_reply_t;
 
-pub fn timeSinceLastInput() !u64 {
-    const connection = xcb_connect(null, null);
-    defer xcb_disconnect(connection);
-    const screen = xcb_setup_roots_iterator(xcb_get_setup(connection)).data;
+pub const State = struct {
+    connection: *xcb_connection_t,
+    screen: *xcb_screen_t,
 
-    const cookie = xcb_screensaver_query_info(connection, screen.root);
+    pub fn init() State {
+        const conn = xcb_connect(null, null);
+        const scr = xcb_setup_roots_iterator(xcb_get_setup(conn)).data;
+        return .{
+            .connection = conn,
+            .screen = scr,
+        };
+    }
+
+    pub fn deinit(state: *State) void {
+        xcb_disconnect(state.connection);
+    }
+};
+
+pub fn timeSinceLastInput(state: *const State) !u64 {
+    const cookie = xcb_screensaver_query_info(state.connection, state.screen.root);
     //FIXME: Check for errors here:
-    const info = xcb_screensaver_query_info_reply(connection, cookie, null);
+    const info = xcb_screensaver_query_info_reply(state.connection, cookie, null);
     defer std.c.free(info);
     const time = info.ms_since_user_input;
     return time / std.time.ms_per_s;
