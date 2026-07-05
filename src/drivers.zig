@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const core = @import("kw-core");
 const amqp = @import("kw-amqp");
 const cron = @import("kw-cron");
@@ -63,10 +64,51 @@ const signal_driver = signal.Driver
     .routes(signal.From(signal.default.Shutdown))
     .build();
 
-pub const drivers = core.DriverRegistry
+/// Stand-in for the introspection mount when the UI is compiled out — mirrors
+/// `private_mount.zig`'s `register`/`deps` shape so the wiring below stays unconditional.
+const NoopMount = struct {
+    pub fn register(comptime base: core.DriverRegistry) core.DriverRegistry {
+        return base;
+    }
+
+    pub const deps = struct {
+        pub fn apply(
+            dephub: anytype,
+            comptime category: anytype,
+            allocator: std.mem.Allocator,
+            comptime Config: type,
+        ) Return(category, Config, @TypeOf(dephub)) {
+            _ = allocator;
+            return dephub;
+        }
+
+        pub fn Return(comptime category: anytype, comptime Config: type, comptime DH: type) type {
+            _ = category;
+            _ = Config;
+            return DH;
+        }
+    };
+};
+
+/// The private introspection-UI mount (a second `.private` HTTP driver) with the docs
+/// manifest and the http/cron backends threaded in. The `@import`s live in the taken
+/// branch only, so ui-less builds need none of those modules wired.
+pub const introspection = if (build_options.ui)
+    @import("kw-introspect").Mount(
+        @import("kw-gen--docs"),
+        .{ @import("kw-introspect--http"), @import("kw-introspect--cron") },
+    )
+else
+    NoopMount;
+
+const base_registry = core.DriverRegistry
     .new()
     .registerHandler(cron_driver)
     .registerHandler(amqp_driver)
     .registerHandler(signal_driver);
+
+// The private introspection mount is appended only in ui runtime builds, not during
+// docgen (the UI is generated *from* the docs); `register` handles the docgen gating.
+pub const drivers = introspection.register(base_registry);
 
 pub const Scheduler = drivers.SchedulerMap();

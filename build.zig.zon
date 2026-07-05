@@ -54,6 +54,18 @@
         .kw_docgen_amqp = .{
             .path = "../kwatcher/packages/docgen-amqp",
         },
+        .kw_docgen_cron = .{
+            .path = "../kwatcher/packages/docgen-cron",
+        },
+        .kw_docgen_http = .{
+            .path = "../kwatcher/packages/docgen-http",
+        },
+        .kw_http = .{
+            .path = "../kwatcher/packages/http",
+        },
+        .kw_http_template = .{
+            .path = "../kwatcher/packages/kw-http-template",
+        },
     },
     .paths = .{
         "build.zig",
