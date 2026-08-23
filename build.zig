@@ -88,20 +88,22 @@ fn wireApp(
         m.addImport("kw-signal", kw_signal);
         m.addImport("afk-schema", afk_schema);
     }
-    // 3rd Party:
+    // 3rd Party: the whole X stack links statically (libxcb + its Xau/Xdmcp
+    // auth deps) — shared objects would break static-linking targets (the CI
+    // container is musl) and drag runtime .so dependencies into the binary.
     switch (target.result.os.tag) {
         .windows => {},
         .linux => {
             switch (target.result.cpu.arch) {
                 .aarch64 => {
-                    lib_mod.addObjectFile(b.path("vendor/libxdmcp/aarch64/libXdmcp.so.6.0.0"));
-                    lib_mod.addObjectFile(b.path("vendor/libxau/aarch64/libXau.so.6.0.0"));
+                    lib_mod.addObjectFile(b.path("vendor/libxdmcp/aarch64/libXdmcp.a"));
+                    lib_mod.addObjectFile(b.path("vendor/libxau/aarch64/libXau.a"));
                     lib_mod.addObjectFile(b.path("vendor/libxcb/aarch64/libxcb.a"));
                     lib_mod.addObjectFile(b.path("vendor/libxcb/aarch64/libxcb-screensaver.a"));
                 },
                 .x86_64 => {
-                    lib_mod.addObjectFile(b.path("vendor/libxdmcp/x86_64/libXdmcp.so.6.0.0"));
-                    lib_mod.addObjectFile(b.path("vendor/libxau/x86_64/libXau.so.6.0.0"));
+                    lib_mod.addObjectFile(b.path("vendor/libxdmcp/x86_64/libXdmcp.a"));
+                    lib_mod.addObjectFile(b.path("vendor/libxau/x86_64/libXau.a"));
                     lib_mod.addObjectFile(b.path("vendor/libxcb/x86_64/libxcb.a"));
                     lib_mod.addObjectFile(b.path("vendor/libxcb/x86_64/libxcb-screensaver.a"));
                 },

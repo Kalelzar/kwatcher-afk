@@ -41,8 +41,6 @@ jobs:
           version="$(cat build.zig.zon | grep "\.version" | sed -E 's/.*"(.*)".*/\1/')"
           echo "Version: $version"
           echo "version=$version" >> $FORGEJO_OUTPUT
-      - name: Pkgs
-        run: apk add libxcb-static
       - name: Build
         run: zig build -Dexe -Doptimize=ReleaseFast -Dtarget=${{matrix.targets}} --summary all 
       - name: Publish
