@@ -1,3 +1,60 @@
-[submodule "vendor/kwatcher"]
-	path = vendor/kwatcher
-	url = https://git.kalelzar.xyz/kalelzar/kwatcher.git
+[submodule "vendor/core"]
+	path = vendor/core
+	url = https://git.kalelzar.xyz/kalelzar/kw-core.git
+[submodule "vendor/runtime"]
+	path = vendor/runtime
+	url = https://git.kalelzar.xyz/kalelzar/kw-runtime.git
+[submodule "vendor/kwev"]
+	path = vendor/kwev
+	url = https://git.kalelzar.xyz/kalelzar/kw-kwev.git
+[submodule "vendor/amqp"]
+	path = vendor/amqp
+	url = https://git.kalelzar.xyz/kalelzar/kw-amqp.git
+[submodule "vendor/cache"]
+	path = vendor/cache
+	url = https://git.kalelzar.xyz/kalelzar/kw-cache.git
+[submodule "vendor/cron"]
+	path = vendor/cron
+	url = https://git.kalelzar.xyz/kalelzar/kw-cron.git
+[submodule "vendor/signal"]
+	path = vendor/signal
+	url = https://git.kalelzar.xyz/kalelzar/kw-signal.git
+[submodule "vendor/protocol"]
+	path = vendor/protocol
+	url = https://git.kalelzar.xyz/kalelzar/kw-protocol.git
+[submodule "vendor/http"]
+	path = vendor/http
+	url = https://git.kalelzar.xyz/kalelzar/kw-http.git
+[submodule "vendor/http-core"]
+	path = vendor/http-core
+	url = https://git.kalelzar.xyz/kalelzar/kw-http-core.git
+[submodule "vendor/http-client"]
+	path = vendor/http-client
+	url = https://git.kalelzar.xyz/kalelzar/kw-http-client.git
+[submodule "vendor/auth-oidc"]
+	path = vendor/auth-oidc
+	url = https://git.kalelzar.xyz/kalelzar/kw-auth-oidc.git
+[submodule "vendor/kw-http-template"]
+	path = vendor/kw-http-template
+	url = https://git.kalelzar.xyz/kalelzar/kw-http-template.git
+[submodule "vendor/docgen"]
+	path = vendor/docgen
+	url = https://git.kalelzar.xyz/kalelzar/kw-docgen.git
+[submodule "vendor/docgen-amqp"]
+	path = vendor/docgen-amqp
+	url = https://git.kalelzar.xyz/kalelzar/kw-docgen-amqp.git
+[submodule "vendor/docgen-cron"]
+	path = vendor/docgen-cron
+	url = https://git.kalelzar.xyz/kalelzar/kw-docgen-cron.git
+[submodule "vendor/docgen-http"]
+	path = vendor/docgen-http
+	url = https://git.kalelzar.xyz/kalelzar/kw-docgen-http.git
+[submodule "vendor/docindex"]
+	path = vendor/docindex
+	url = https://git.kalelzar.xyz/kalelzar/kw-docindex.git
+[submodule "vendor/asyncapi"]
+	path = vendor/asyncapi
+	url = https://git.kalelzar.xyz/kalelzar/kw-asyncapi.git
+[submodule "vendor/zettel"]
+	path = vendor/zettel
+	url = https://git.kalelzar.xyz/kalelzar/zettel.git

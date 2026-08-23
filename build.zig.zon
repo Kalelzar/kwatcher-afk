@@ -16,7 +16,7 @@
     // This field is optional.
     // This is currently advisory only; Zig does not yet do anything
     // with this value.
-    .minimum_zig_version = "0.15.1",
+    .minimum_zig_version = "0.15.2",
 
     // This field is optional.
     // Each dependency must either provide a `url` and `hash`, or a `path`.
@@ -24,53 +24,60 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
+        .zettel = .{
+            .path = "vendor/zettel",
+        },
         .kw_core = .{
-            .path = "../kwatcher/packages/core",
+            .path = "vendor/core",
         },
         .kwatcher = .{
-            .path = "../kwatcher/packages/runtime",
+            .path = "vendor/runtime",
         },
         .kw_amqp = .{
-            .path = "../kwatcher/packages/amqp",
+            .path = "vendor/amqp",
         },
         .kw_cache = .{
-            .path = "../kwatcher/packages/cache",
+            .path = "vendor/cache",
         },
         .kw_cron = .{
-            .path = "../kwatcher/packages/cron",
+            .path = "vendor/cron",
         },
         .kw_protocol = .{
-            .path = "../kwatcher/packages/protocol",
+            .path = "vendor/protocol",
         },
         .kw_signal = .{
-            .path = "../kwatcher/packages/signal",
+            .path = "vendor/signal",
+        },
+        .kw_auth_oidc = .{
+            .path = "vendor/auth-oidc",
+        },
+        .kw_http_client = .{
+            .path = "vendor/http-client",
         },
         .kw_docgen = .{
-            .path = "../kwatcher/packages/docgen",
-        },
-        .kw_docgen_none = .{
-            .path = "../kwatcher/packages/docgen-none",
+            .path = "vendor/docgen",
         },
         .kw_docgen_amqp = .{
-            .path = "../kwatcher/packages/docgen-amqp",
+            .path = "vendor/docgen-amqp",
         },
         .kw_docgen_cron = .{
-            .path = "../kwatcher/packages/docgen-cron",
+            .path = "vendor/docgen-cron",
         },
         .kw_docgen_http = .{
-            .path = "../kwatcher/packages/docgen-http",
+            .path = "vendor/docgen-http",
         },
         .kw_http = .{
-            .path = "../kwatcher/packages/http",
+            .path = "vendor/http",
         },
         .kw_http_template = .{
-            .path = "../kwatcher/packages/kw-http-template",
+            .path = "vendor/kw-http-template",
         },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
+        "schema",
         // For example...
         //"LICENSE",
         //"README.md",

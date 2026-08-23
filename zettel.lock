@@ -1,0 +1,5 @@
+(zettel-lock 1
+  (schema "afk"
+    (v 1 "9fc425064e4618ddd6c28a1c7ac8092bcd65e7a86c30c6bc4a3a718262533a37"))
+  (schema "afk.status-change"
+    (v 1 "5de1386a30e54f330988e5f9502b7f716e7f0f009beeef634ee5a83aad9ec9f0")))

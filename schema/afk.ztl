@@ -1,0 +1,29 @@
+(module kwatcher:afk)
+
+(defenum afk-status u8
+  "Whether the user is active at the machine."
+  Active Inactive)
+
+(defstruct afk-data
+  "Heartbeat properties for the afk client."
+  (status afk-status "The current afk status."))
+
+(defstruct status-diff
+  "A status transition."
+  (prev afk-status "The previous status.")
+  (current afk-status "The new status.")
+  (timestamp i64 "When the transition happened."))
+
+(defstruct status-change-data
+  "Status-change heartbeat properties."
+  (diff status-diff "The transition that occurred."))
+
+(defschema heartbeat afk-data "afk"
+  "The afk heartbeat properties."
+  (1 "Version 1: just the status." status))
+
+(defschema status-change status-change-data "afk.status-change"
+  "The afk status-change heartbeat properties."
+  (1 "Version 1: the transition." diff))
+
+(export heartbeat status-change status-diff)

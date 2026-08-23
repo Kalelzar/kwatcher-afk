@@ -24,7 +24,9 @@ pub fn timeOfLastInput() !u64 {
 }
 
 pub const State = struct {
-    pub fn init() State {
+    // Fallible for signature parity with the linux State (`stateFac` does
+    // `try .init()` on every platform).
+    pub fn init() !State {
         return .{};
     }
     pub inline fn deinit(_: *State) void {}

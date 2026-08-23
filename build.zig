@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const docgen = @import("kw_docgen").build_docgen;
 const http_template = @import("kw_http_template").build_templates;
+const zettel = @import("zettel");
 
 const App = struct {
     exe_mod: *std.Build.Module,
@@ -19,6 +20,7 @@ fn wireApp(
     ui: bool,
     build_options: *std.Build.Module,
     expose_lib: bool,
+    check_step: ?*std.Build.Step,
 ) App {
     const lib_opts = std.Build.Module.CreateOptions{
         .root_source_file = b.path("src/root.zig"),
@@ -40,7 +42,8 @@ fn wireApp(
 
     // Dependencies:
     // 1st Party:
-    const kw_core = b.dependency("kw_core", .{ .target = target, .optimize = optimize }).module("kw-core");
+    const kw_core_dep = b.dependency("kw_core", .{ .target = target, .optimize = optimize });
+    const kw_core = kw_core_dep.module("kw-core");
     const kwatcher = b.dependency("kwatcher", .{ .target = target, .optimize = optimize }).module("kwatcher");
     const kw_amqp = b.dependency("kw_amqp", .{ .target = target, .optimize = optimize }).module("kw-amqp");
     const kw_cache = b.dependency("kw_cache", .{ .target = target, .optimize = optimize }).module("kw-cache");
@@ -53,6 +56,27 @@ fn wireApp(
     // The entrypoint copy is built explicitly (not derived), so the options module must be
     // wired here rather than relying on `deriveEntrypoint`'s import mirroring.
     exe_mod.addImport("build_options", build_options);
+    // zettel schema codegen: schema/afk.ztl -> the afk-schema module,
+    // compiled against kw-core's schema sources via --import so the whole
+    // tree shares one Context/ZettelError.
+    // Debug for build speed: the schema compiler runs in ~50ms on these
+    // inputs, while a ReleaseSafe build of it costs ~50s of LLVM at the
+    // head of the build graph — and must stay in lockstep with kw-core's
+    // zettel dependency so the two instantiations dedup into one.
+    const zettel_dep = b.dependency("zettel", .{ .optimize = .Debug });
+    const core_schema = zettel.SchemaImport{
+        .name = "kw-core-schema",
+        .dir = kw_core_dep.namedLazyPath("schema-dir"),
+        .module = kw_core_dep.module("kw-core-schema"),
+    };
+    const afk_schema = zettel.schemaModule(b, zettel_dep, .{
+        .source_dir = b.path("schema"),
+        .root_module = "kwatcher:afk",
+        .imports = &.{core_schema},
+        .check_step = check_step,
+        .target = target,
+        .optimize = optimize,
+    });
     // 1st Party (kwatcher packages, wired into both the exe and library modules):
     inline for (.{ exe_mod, lib_mod }) |m| {
         m.addImport("kw-core", kw_core);
@@ -62,6 +86,7 @@ fn wireApp(
         m.addImport("kw-cron", kw_cron);
         m.addImport("kw-protocol", kw_protocol);
         m.addImport("kw-signal", kw_signal);
+        m.addImport("afk-schema", afk_schema);
     }
     // 3rd Party:
     switch (target.result.os.tag) {
@@ -93,6 +118,10 @@ fn wireApp(
         const kw_docgen_http_dep = b.dependency("kw_docgen_http", .{ .target = target, .optimize = optimize });
         const kw_docgen_cron_dep = b.dependency("kw_docgen_cron", .{ .target = target, .optimize = optimize });
         const kw_http = b.dependency("kw_http", .{ .target = target, .optimize = optimize }).module("kw-http");
+        // The introspect mount's OIDC verification: the auth-oidc middleware
+        // plus the http-client egress driver that feeds its discovery store.
+        const kw_auth_oidc = b.dependency("kw_auth_oidc", .{ .target = target, .optimize = optimize }).module("kw-auth-oidc");
+        const kw_http_client = b.dependency("kw_http_client", .{ .target = target, .optimize = optimize }).module("kw-http-client");
         const kw_introspect = kw_docgen_dep.module("kw-introspect");
         const kw_introspect_http = kw_docgen_http_dep.module("kw-introspect--http");
         const kw_introspect_cron = kw_docgen_cron_dep.module("kw-introspect--cron");
@@ -113,6 +142,8 @@ fn wireApp(
         kw_introspect_cron.addImport("kw-http-template", kw_http_template);
 
         exe_mod.addImport("kw-http", kw_http);
+        exe_mod.addImport("kw-auth-oidc", kw_auth_oidc);
+        exe_mod.addImport("kw-http-client", kw_http_client);
         exe_mod.addImport("kw-introspect", kw_introspect);
         exe_mod.addImport("kw-introspect--http", kw_introspect_http);
         exe_mod.addImport("kw-introspect--cron", kw_introspect_cron);
@@ -134,7 +165,11 @@ pub fn build(b: *std.Build) !void {
     opts.addOption(bool, "ui", ui);
     const build_options = opts.createModule();
 
-    const app = wireApp(b, target, optimize, ui, build_options, true);
+    // Created before wireApp so the zettel schema check can hang off it;
+    // the artifact dependencies are attached below.
+    const check = b.step("check", "Build without generating artifacts.");
+
+    const app = wireApp(b, target, optimize, ui, build_options, true, check);
 
     // Artifacts:
     const exe = b.addExecutable(.{
@@ -157,6 +192,7 @@ pub fn build(b: *std.Build) !void {
 
     const tests = b.addTest(.{
         .root_module = app.lib_mod,
+        .use_llvm = true, // Due to https://github.com/ziglang/zig/issues/24181
     });
 
     const run_tests = b.addRunArtifact(tests);
@@ -179,7 +215,6 @@ pub fn build(b: *std.Build) !void {
     });
 
     // Steps:
-    const check = b.step("check", "Build without generating artifacts.");
     check.dependOn(&lib.step);
     check.dependOn(&exe.step);
 
@@ -203,27 +238,48 @@ pub fn build(b: *std.Build) !void {
     const native = target.query.isNative();
     const gen_target = if (native) target else b.graph.host;
 
-    const kw_docgen_none = b.dependency("kw_docgen_none", .{ .target = gen_target, .optimize = optimize }).module("kw-docgen--none");
     const kw_docgen_amqp = b.dependency("kw_docgen_amqp", .{ .target = gen_target, .optimize = optimize }).module("kw-docgen--amqp");
     const kw_docgen_cron = b.dependency("kw_docgen_cron", .{ .target = gen_target, .optimize = optimize }).module("kw-docgen--cron");
 
     const entrypoint: ?*std.Build.Module = if (native)
         null
     else
-        wireApp(b, b.graph.host, optimize, ui, build_options, false).exe_mod;
+        wireApp(b, b.graph.host, optimize, ui, build_options, false, null).exe_mod;
 
     const docs = docgen.wire(b, .{
         .target = gen_target,
         .optimize = optimize,
         .consumer = app.exe_mod,
         .entrypoint = entrypoint,
+        // Kinds without a backend entry (internal, signal) are skipped by the
+        // generator — no placeholder backends needed.
         .backends = &.{
             .{ .kind = "cron", .module = kw_docgen_cron },
             .{ .kind = "amqp", .module = kw_docgen_amqp },
-            .{ .kind = "internal", .module = kw_docgen_none },
-            .{ .kind = "signal", .module = kw_docgen_none },
         },
     });
 
     exe.step.dependOn(&docs.docgen_step.step);
+
+    // The docgen-package test suite compiles the whole app graph; it used to
+    // gate the generator exe serially, now it runs as a parallel sibling and
+    // still fails the build on regression.
+    b.getInstallStep().dependOn(docs.docgen_tests);
+
+    // ZPack layout locking (zettel's ZPACK.md §9): ztl-lock-all / ztl-lock
+    // -Dschema=name:version / ztl-verify. The last is the pre-push gate —
+    // it fails when a locked schema's wire layout drifts from zettel.lock
+    // or a schema version is unlocked. kw-core's schemas are foreign here
+    // and stay kw-core's to lock.
+    const zettel_dep = b.dependency("zettel", .{ .optimize = .Debug });
+    const kw_core_dep = b.dependency("kw_core", .{ .target = target, .optimize = optimize });
+    zettel.addLockSteps(b, zettel_dep, .{
+        .source_dir = b.path("schema"),
+        .root_module = "kwatcher:afk",
+        .imports = &.{.{
+            .name = "kw-core-schema",
+            .dir = kw_core_dep.namedLazyPath("schema-dir"),
+            .module = kw_core_dep.module("kw-core-schema"),
+        }},
+    });
 }
