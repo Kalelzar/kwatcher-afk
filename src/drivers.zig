@@ -114,7 +114,7 @@ const NoopMount = struct {
         pub fn apply(
             dephub: anytype,
             comptime category: anytype,
-            allocator: std.mem.Allocator,
+            allocator: core.mem.TaggedAllocator,
             comptime Config: type,
         ) Return(category, Config, @TypeOf(dephub)) {
             _ = allocator;

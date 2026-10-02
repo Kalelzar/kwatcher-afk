@@ -96,7 +96,19 @@ const SingletonDependencies = struct {
 
 var config_slot: FallbackConfig = undefined;
 
-pub fn juicyMain(allocator: std.mem.Allocator) !void {
+pub fn juicyMain(backing: std.mem.Allocator) !void {
+    // The process-wide tagged allocator owner. Declared first so it outlives
+    // every handle derived from it (its deinit runs last). `root` is the
+    // framework namespace (`kwatcher:*`); the DI hub is registered with
+    // `kwatcher:di` and the server derives its own sub-tags from `root`.
+    var persistent = core.mem.PersistentAllocator.init(backing);
+    defer persistent.deinit();
+    const root = try persistent.suballocator("kwatcher");
+    const allocator = try root.suballocator("di");
+    // Exposes the owner through DI: factories (user info, cache contexts, amqp
+    // statics, driver inits) resolve `*PersistentAllocator` to mint their tags.
+    var allocator_context = struct { persistent: *core.mem.PersistentAllocator }{ .persistent = &persistent };
+
     // Block the signals owned by the signal driver process-wide BEFORE any
     // thread spawns, so every runtime thread inherits the block and the
     // driver's dedicated sigtimedwait thread is their sole consumer. The
@@ -105,9 +117,9 @@ pub fn juicyMain(allocator: std.mem.Allocator) !void {
         signal.blockRouted(drivers.signal_routes);
     }
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(try root.allocatorFor("config"));
     defer arena.deinit();
-    try core.metrics.initialize(allocator, "afk", "1.0.0", "afk", .{});
+    try core.metrics.initialize(try root.allocatorFor("metrics"), "afk", "1.0.0", "afk", .{});
     defer core.metrics.deinitialize();
 
     var singleton = SingletonDependencies{};
@@ -115,11 +127,13 @@ pub fn juicyMain(allocator: std.mem.Allocator) !void {
 
     const memcache = cache.context.memory;
 
+    // Tagged `<kind>:<key>:cache:<schema>`: the cache is an `.amqp` static
+    // read by the heartbeat route.
     const AfkCache = memcache.Container(memcache.Cache(afk.schema.AfkStatusEntry, .{u8})
         .key(.afk_status)
         .evict(.none)
         .residency(.{ .unlimited = {} })
-        .expiration(.{ .unlimited = {} }));
+        .expiration(.{ .unlimited = {} }), "amqp:amqp:cache:afk_status");
 
     var c = AfkCache{};
 
@@ -135,17 +149,22 @@ pub fn juicyMain(allocator: std.mem.Allocator) !void {
     // The shared route context: the OIDC egress fragment resolves its
     // discovery path off it (filled from config before anything runs).
     var ctx: drivers.Context = .{};
-    defer ctx.deinit(allocator);
+    // The assigned client id it frees is allocated by the protocol's
+    // `client-ack` route through its route-tagged handle; free it through
+    // the same tag so the per-tag counters balance.
+    const ctx_allocator = try persistent.allocatorFor("amqp:amqp:client-ack");
+    defer ctx.deinit(ctx_allocator);
     // The OIDC discovery/JWKS store: written only by the egress driver,
     // read by the introspect mount's verification middleware.
     var oidc_store = if (comptime build_options.ui) auth_oidc.DiscoveryStoreCtx{} else {};
     if (comptime build_options.ui) {
-        oidc_store.store.alloc = allocator;
+        oidc_store.store.alloc = try root.allocatorFor("oidc:store");
         ctx.oidc.well_known_path = auth_oidc.egress.pathOf(config_slot.introspect.auth.well_known);
     }
 
     const base_deps = core.deps.DependencyContainer(FallbackConfig)
         .new(drivers.drivers, allocator)
+        .static(.all, &allocator_context)
         .with(.all, kwatcher.default.withDefault(&config_slot, .{
             .name = "afk",
             .version = "1.0.0",
@@ -198,8 +217,11 @@ pub fn juicyMain(allocator: std.mem.Allocator) !void {
             .static(.private, &IntrospectSecurity.ui_auth);
     } else with_mount;
 
+    // The server takes the root handle: it derives `kwatcher:di` (matching
+    // the hub registration above), `kwatcher:queue` and the per-driver
+    // `kwatcher:<kind>:<key>:watch` tags itself.
     var server = try kwatcher.server.Server(@TypeOf(deps), drivers.drivers)
-        .init(allocator, deps, 2);
+        .init(root, deps, 2);
     defer server.deinit();
 
     try server.start();

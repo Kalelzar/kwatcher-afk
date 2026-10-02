@@ -18,6 +18,7 @@ fn wireApp(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     ui: bool,
+    include_metrics: bool,
     build_options: *std.Build.Module,
     expose_lib: bool,
     check_step: ?*std.Build.Step,
@@ -42,14 +43,17 @@ fn wireApp(
 
     // Dependencies:
     // 1st Party:
-    const kw_core_dep = b.dependency("kw_core", .{ .target = target, .optimize = optimize });
+    // Every kw package forwards `.metrics` to its siblings; in workspace mode they all
+    // resolve to the same checkouts, so the value must match across every call here or
+    // the graph ends up with two differently-configured kw-core instances.
+    const kw_core_dep = b.dependency("kw_core", .{ .metrics = include_metrics, .target = target, .optimize = optimize });
     const kw_core = kw_core_dep.module("kw-core");
-    const kwatcher = b.dependency("kwatcher", .{ .target = target, .optimize = optimize }).module("kwatcher");
-    const kw_amqp = b.dependency("kw_amqp", .{ .target = target, .optimize = optimize }).module("kw-amqp");
-    const kw_cache = b.dependency("kw_cache", .{ .target = target, .optimize = optimize }).module("kw-cache");
-    const kw_cron = b.dependency("kw_cron", .{ .target = target, .optimize = optimize }).module("kw-cron");
-    const kw_protocol = b.dependency("kw_protocol", .{ .target = target, .optimize = optimize }).module("kw-protocol");
-    const kw_signal = b.dependency("kw_signal", .{ .target = target, .optimize = optimize }).module("kw-signal");
+    const kwatcher = b.dependency("kwatcher", .{ .metrics = include_metrics, .target = target, .optimize = optimize }).module("kwatcher");
+    const kw_amqp = b.dependency("kw_amqp", .{ .metrics = include_metrics, .target = target, .optimize = optimize }).module("kw-amqp");
+    const kw_cache = b.dependency("kw_cache", .{ .metrics = include_metrics, .target = target, .optimize = optimize }).module("kw-cache");
+    const kw_cron = b.dependency("kw_cron", .{ .metrics = include_metrics, .target = target, .optimize = optimize }).module("kw-cron");
+    const kw_protocol = b.dependency("kw_protocol", .{ .metrics = include_metrics, .target = target, .optimize = optimize }).module("kw-protocol");
+    const kw_signal = b.dependency("kw_signal", .{ .metrics = include_metrics, .target = target, .optimize = optimize }).module("kw-signal");
     // Imports:
     // Internal:
     exe_mod.addImport("kwatcher-afk", lib_mod);
@@ -116,14 +120,14 @@ fn wireApp(
     if (ui) {
         // Runtime-facing introspection UI modules: the generic core, the HTTP backend that
         // renders the UI itself, and the cron backend for the Timers tab.
-        const kw_docgen_dep = b.dependency("kw_docgen", .{ .target = target, .optimize = optimize });
-        const kw_docgen_http_dep = b.dependency("kw_docgen_http", .{ .target = target, .optimize = optimize });
-        const kw_docgen_cron_dep = b.dependency("kw_docgen_cron", .{ .target = target, .optimize = optimize });
-        const kw_http = b.dependency("kw_http", .{ .target = target, .optimize = optimize }).module("kw-http");
+        const kw_docgen_dep = b.dependency("kw_docgen", .{ .metrics = include_metrics, .target = target, .optimize = optimize });
+        const kw_docgen_http_dep = b.dependency("kw_docgen_http", .{ .metrics = include_metrics, .target = target, .optimize = optimize });
+        const kw_docgen_cron_dep = b.dependency("kw_docgen_cron", .{ .metrics = include_metrics, .target = target, .optimize = optimize });
+        const kw_http = b.dependency("kw_http", .{ .metrics = include_metrics, .target = target, .optimize = optimize }).module("kw-http");
         // The introspect mount's OIDC verification: the auth-oidc middleware
         // plus the http-client egress driver that feeds its discovery store.
-        const kw_auth_oidc = b.dependency("kw_auth_oidc", .{ .target = target, .optimize = optimize }).module("kw-auth-oidc");
-        const kw_http_client = b.dependency("kw_http_client", .{ .target = target, .optimize = optimize }).module("kw-http-client");
+        const kw_auth_oidc = b.dependency("kw_auth_oidc", .{ .metrics = include_metrics, .target = target, .optimize = optimize }).module("kw-auth-oidc");
+        const kw_http_client = b.dependency("kw_http_client", .{ .metrics = include_metrics, .target = target, .optimize = optimize }).module("kw-http-client");
         const kw_introspect = kw_docgen_dep.module("kw-introspect");
         const kw_introspect_http = kw_docgen_http_dep.module("kw-introspect--http");
         const kw_introspect_cron = kw_docgen_cron_dep.module("kw-introspect--cron");
@@ -131,6 +135,7 @@ fn wireApp(
         // One shared zmpl-backed template module covering every contributing package's
         // templates, so all `WithTemplates` lookups (core + http + cron prefixes) resolve.
         const kw_http_template = http_template.wire(b, .{
+            .metrics = include_metrics,
             .target = target,
             .optimize = optimize,
             .sources = &.{
@@ -156,6 +161,7 @@ fn wireApp(
 
 pub fn build(b: *std.Build) !void {
     // Options
+    const include_metrics = b.option(bool, "metrics", "Include metrics generation in code.") orelse false;
     const build_all = b.option(bool, "all", "Build all components. You can still disable individual components") orelse false;
     const build_exe = b.option(bool, "exe", "Build the application executable") orelse build_all;
     const build_static_library = b.option(bool, "lib", "Build a static library object") orelse build_all;
@@ -171,7 +177,7 @@ pub fn build(b: *std.Build) !void {
     // the artifact dependencies are attached below.
     const check = b.step("check", "Build without generating artifacts.");
 
-    const app = wireApp(b, target, optimize, ui, build_options, true, check);
+    const app = wireApp(b, target, optimize, ui, include_metrics, build_options, true, check);
 
     // Artifacts:
     const exe = b.addExecutable(.{
@@ -240,15 +246,16 @@ pub fn build(b: *std.Build) !void {
     const native = target.query.isNative();
     const gen_target = if (native) target else b.graph.host;
 
-    const kw_docgen_amqp = b.dependency("kw_docgen_amqp", .{ .target = gen_target, .optimize = optimize }).module("kw-docgen--amqp");
-    const kw_docgen_cron = b.dependency("kw_docgen_cron", .{ .target = gen_target, .optimize = optimize }).module("kw-docgen--cron");
+    const kw_docgen_amqp = b.dependency("kw_docgen_amqp", .{ .metrics = include_metrics, .target = gen_target, .optimize = optimize }).module("kw-docgen--amqp");
+    const kw_docgen_cron = b.dependency("kw_docgen_cron", .{ .metrics = include_metrics, .target = gen_target, .optimize = optimize }).module("kw-docgen--cron");
 
     const entrypoint: ?*std.Build.Module = if (native)
         null
     else
-        wireApp(b, b.graph.host, optimize, ui, build_options, false, null).exe_mod;
+        wireApp(b, b.graph.host, optimize, ui, include_metrics, build_options, false, null).exe_mod;
 
     const docs = docgen.wire(b, .{
+        .metrics = include_metrics,
         .target = gen_target,
         .optimize = optimize,
         .consumer = app.exe_mod,
@@ -274,7 +281,7 @@ pub fn build(b: *std.Build) !void {
     // or a schema version is unlocked. kw-core's schemas are foreign here
     // and stay kw-core's to lock.
     const zettel_dep = b.dependency("zettel", .{ .optimize = .Debug });
-    const kw_core_dep = b.dependency("kw_core", .{ .target = target, .optimize = optimize });
+    const kw_core_dep = b.dependency("kw_core", .{ .metrics = include_metrics, .target = target, .optimize = optimize });
     zettel.addLockSteps(b, zettel_dep, .{
         .source_dir = b.path("schema"),
         .root_module = "kwatcher:afk",
