@@ -86,9 +86,10 @@ pub fn @"publish!:afkStatusChange amq.direct/afk-status"(
     ctx: struct { afk.schema.StatusDiff },
     user_info: *core.schema.UserInfo,
     client_info: core.schema.ClientInfo,
+    io: std.Io,
 ) core.schema.Heartbeat.V1(afk.schema.AfkStatusChangeProperties) {
     return .{
-        .timestamp = std.time.microTimestamp(),
+        .timestamp = @intCast(std.Io.Clock.real.now(io).toMicroseconds()),
         .event = "afk-status-change",
         .user = user_info.v1(),
         .client = client_info.v1(),

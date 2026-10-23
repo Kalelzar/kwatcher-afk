@@ -96,12 +96,12 @@ const SingletonDependencies = struct {
 
 var config_slot: FallbackConfig = undefined;
 
-pub fn juicyMain(backing: std.mem.Allocator) !void {
+pub fn juicyMain(backing: std.mem.Allocator, io: std.Io, environ: *const std.process.Environ.Map) !void {
     // The process-wide tagged allocator owner. Declared first so it outlives
     // every handle derived from it (its deinit runs last). `root` is the
     // framework namespace (`kwatcher:*`); the DI hub is registered with
     // `kwatcher:di` and the server derives its own sub-tags from `root`.
-    var persistent = core.mem.PersistentAllocator.init(backing);
+    var persistent = core.mem.PersistentAllocator.init(io, backing);
     defer persistent.deinit();
     const root = try persistent.suballocator("kwatcher");
     const allocator = try root.suballocator("di");
@@ -119,7 +119,7 @@ pub fn juicyMain(backing: std.mem.Allocator) !void {
 
     var arena = std.heap.ArenaAllocator.init(try root.allocatorFor("config"));
     defer arena.deinit();
-    try core.metrics.initialize(try root.allocatorFor("metrics"), "afk", "1.0.0", "afk", .{});
+    try core.metrics.initialize(try root.allocatorFor("metrics"), io, "afk", "1.0.0", "afk", .{});
     defer core.metrics.deinitialize();
 
     var singleton = SingletonDependencies{};
@@ -141,7 +141,7 @@ pub fn juicyMain(backing: std.mem.Allocator) !void {
     // sections); the config parser rejects unknown fields, so the two variants use
     // separate files.
     const config_name = if (build_options.ui) "afk_v2.debug" else "afk_v2";
-    config_slot = try core.config.findConfigFile(FallbackConfig, arena.allocator(), config_name) orelse {
+    config_slot = try core.config.findConfigFile(FallbackConfig, arena.allocator(), io, environ, config_name) orelse {
         std.log.err("Could not load config!", .{});
         return error.MissingConfig;
     };
@@ -163,7 +163,7 @@ pub fn juicyMain(backing: std.mem.Allocator) !void {
     }
 
     const base_deps = core.deps.DependencyContainer(FallbackConfig)
-        .new(drivers.drivers, allocator)
+        .new(io, drivers.drivers, allocator)
         .static(.all, &allocator_context)
         .with(.all, kwatcher.default.withDefault(&config_slot, .{
             .name = "afk",
@@ -221,22 +221,14 @@ pub fn juicyMain(backing: std.mem.Allocator) !void {
     // the hub registration above), `kwatcher:queue` and the per-driver
     // `kwatcher:<kind>:<key>:watch` tags itself.
     var server = try kwatcher.server.Server(@TypeOf(deps), drivers.drivers)
-        .init(root, deps, 2);
+        .init(io, environ, root, deps, 2);
     defer server.deinit();
 
     try server.start();
 }
 
-pub fn main() !void {
-    if (comptime builtin.mode == .Debug) {
-        var gpa = std.heap.GeneralPurposeAllocator(.{
-            .stack_trace_frames = 10,
-        }).init;
-        const allocator = gpa.allocator();
-        try juicyMain(allocator);
-        _ = gpa.detectLeaks();
-    } else {
-        const alloc = std.heap.smp_allocator;
-        try juicyMain(alloc);
-    }
+pub fn main(init: std.process.Init) !void {
+    // `init.gpa` is leak-checked in Debug; the environment is only reachable
+    // through `init.environ_map`.
+    try juicyMain(init.gpa, init.io, init.environ_map);
 }

@@ -16,7 +16,7 @@ const App = struct {
 fn wireApp(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     ui: bool,
     include_metrics: bool,
     build_options: *std.Build.Module,
@@ -67,7 +67,7 @@ fn wireApp(
     // inputs, while a ReleaseSafe build of it costs ~50s of LLVM at the
     // head of the build graph — and must stay in lockstep with kw-core's
     // zettel dependency so the two instantiations dedup into one.
-    const zettel_dep = b.dependency("zettel", .{ .optimize = .Debug });
+    const zettel_dep = b.dependency("zettel", .{ .optimize = .debug });
     const core_schema = zettel.SchemaImport{
         .name = "kw-core-schema",
         .dir = kw_core_dep.namedLazyPath("schema-dir"),
@@ -167,7 +167,7 @@ pub fn build(b: *std.Build) !void {
     const build_static_library = b.option(bool, "lib", "Build a static library object") orelse build_all;
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const ui = b.option(bool, "ui", "Build the private introspection UI into the binary") orelse (optimize == .Debug);
+    const ui = b.option(bool, "ui", "Build the private introspection UI into the binary") orelse (optimize == .debug);
 
     const opts = b.addOptions();
     opts.addOption(bool, "ui", ui);
@@ -214,11 +214,11 @@ pub fn build(b: *std.Build) !void {
     );
 
     const fmt = b.addFmt(.{
-        .paths = &.{
+        .paths = b.pathList(&.{
             "src/",
             "build.zig",
             "build.zig.zon",
-        },
+        }),
         .check = true,
     });
 
@@ -280,7 +280,7 @@ pub fn build(b: *std.Build) !void {
     // it fails when a locked schema's wire layout drifts from zettel.lock
     // or a schema version is unlocked. kw-core's schemas are foreign here
     // and stay kw-core's to lock.
-    const zettel_dep = b.dependency("zettel", .{ .optimize = .Debug });
+    const zettel_dep = b.dependency("zettel", .{ .optimize = .debug });
     const kw_core_dep = b.dependency("kw_core", .{ .metrics = include_metrics, .target = target, .optimize = optimize });
     zettel.addLockSteps(b, zettel_dep, .{
         .source_dir = b.path("schema"),
