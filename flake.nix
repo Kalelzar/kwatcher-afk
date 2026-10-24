@@ -57,6 +57,6 @@
       inputs.kw-docgen-cron inputs.kw-docgen-http inputs.kw-zettel
     ];
     # Placeholder: refresh with kw-nix/scripts/update-deps-hash.sh.
-    depsHash = "sha256-RHrRH/9wKnn2YN/heg7NlRAe5gJKpEumIUxna1KO5pk=";
+    depsHash = "sha256-VXOomHU2bQnoBclXja01PRn5FHKQrHaZqk+UfrlX2yg=";
   };
 }
